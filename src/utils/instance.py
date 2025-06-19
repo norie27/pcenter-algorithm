@@ -14,4 +14,5 @@ class Instance:
         neighbors = np.zeros((self.n, self.n), dtype=np.int32)
         for i in range(self.n):
             neighbors[i] = np.argsort(self.dist[i])
+        
         return neighbors
