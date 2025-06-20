@@ -1,13 +1,17 @@
-# src/algorithms/localsearch_verbose.py
+
+
 
 import numpy as np
 import random
 from typing import List, Optional, Tuple
 import math
+# Ajout de l'import pour récupérer les paramètres de l'instance si besoin
 from src.utils.instance import Instance
 
+
+
 class VerboseOptimizedLocalSearchPCenter:
-    """Recherche locale optimisée (Pullan) avec niveau de verbosité contrôlable"""
+    """Recherche locale optimisée (Pullan) avec niveau de verbosité contrôlable - CORRIGÉE"""
 
     def __init__(self,
                  n: int,
@@ -20,6 +24,7 @@ class VerboseOptimizedLocalSearchPCenter:
         self.distances = distances
         self.neighbors = neighbors
         self.verbose = verbose
+        # Closest and second-closest facility for each vertex
         self.F0 = np.full(n, -1, dtype=np.int32)
         self.D0 = np.full(n, np.inf, dtype=np.float64)
         self.F1 = np.full(n, -1, dtype=np.int32)
@@ -28,6 +33,7 @@ class VerboseOptimizedLocalSearchPCenter:
         self.S: List[int] = []
         self.S_set = set()
         self.forbidden_swaps = set()
+        # Buffers for fast state save/restore
         self._saved_F0 = np.empty_like(self.F0)
         self._saved_D0 = np.empty_like(self.D0)
         self._saved_F1 = np.empty_like(self.F1)
@@ -95,147 +101,227 @@ class VerboseOptimizedLocalSearchPCenter:
         return min_dist, second
 
     def find_pair(self, w: int) -> Tuple[Optional[int],Optional[int]]:
+        """Find Pair selon Pullan - CORRIGÉ"""
         if self.verbose:
             print(f"[FIND_PAIR] Début pour w={w}")
         C = np.max(self.distances)
         L = []
-        # indice naturel de la facility la plus proche
+        
+        # Trouver k selon Pullan : index de la facility actuelle de w
         current = self.F0[w]
-        if current>=0:
-            k_idx = np.where(self.neighbors[w]==current)[0]
-            k = k_idx[0] if len(k_idx)>0 else 0
+        if current >= 0:
+            k_idx = np.where(self.neighbors[w] == current)[0]
+            k = k_idx[0] + 1 if len(k_idx) > 0 else self.n  # k+1 pour inclure la facility actuelle
         else:
-            k = 0
-        # Pas de plafonnement : explore tous les k premiers voisins
-        # Taille minimale du voisinage
-        MIN_K = 50
-        k_eff = max(k, MIN_K)
-        Nwk = self.neighbors[w][:k_eff]
-
+            k = self.n  # Si pas de facility assignée, considérer tous
+        
+        # SUPPRESSION DES LIMITATIONS ARBITRAIRES
+        # k = max(k, 50)  # ← SUPPRIMÉ
+        
+        # Prendre les k premiers voisins selon Pullan
+        Nwk = self.neighbors[w][:k][:k+1]
         if self.verbose:
-            print(f"  k={k}, Nwk={Nwk.tolist()}")
+            print(f"  k={k}, Nwk={Nwk[:10].tolist()}..." if k > 10 else f"  k={k}, Nwk={Nwk.tolist()}")
+        
+        # Candidats : voisins pas encore dans S
         candidates = [v for v in Nwk if v not in self.S_set]
+        
+        # SUPPRESSION DE LA LIMITATION À 20 CANDIDATS
+        # candidates = candidates[:20]  # ← SUPPRIMÉ
+        
         if self.verbose:
-            print(f"  candidats={candidates}")
+            print(f"  candidats={len(candidates)} total")
         if not candidates:
             if self.verbose:
                 print("  Aucun candidat trouvé\n")
             return None, None
-        # sauvegarde de l'état
-        np.copyto(self._saved_F0,self.F0)
-        np.copyto(self._saved_D0,self.D0)
-        np.copyto(self._saved_F1,self.F1)
-        np.copyto(self._saved_D1,self.D1)
+
+        # Sauvegarder l'état
+        np.copyto(self._saved_F0, self.F0)
+        np.copyto(self._saved_D0, self.D0)
+        np.copyto(self._saved_F1, self.F1)
+        np.copyto(self._saved_D1, self.D1)
         saved_Sc = self.Sc
         saved_S = self.S.copy()
         saved_S_set = self.S_set.copy()
-        # exploration complète
+
         for i in candidates:
             if self.verbose:
-                print(f"  Test swap out f<->in {i}")
+                print(f"  Test candidat {i}")
+            
+            # Ajouter temporairement la facility
             self.add_facility(i)
-            M = {f:0 for f in self.S}
-            for v in range(self.n):
-                if v in self.S_set: continue
-                mind = min(self.distances[i,v], self.D1[v])
-                f0v = self.F0[v]
-                if f0v in M and mind > M[f0v]:
-                    M[f0v] = mind
+            
+            # Calculer le coût de suppression de chaque facility existante
+            M = {}
             for f in self.S:
-                if f==i: continue
-                Mf = M.get(f,0)
-                if self.verbose:
-                    print(f"    swap tentativa: sortir {f}, entrer {i}, Mf={Mf:.2f}")
+                if f == i:
+                    continue
+                M[f] = 0
+                
+                # Pour chaque vertex, calculer le coût si on supprime f
+                for v in range(self.n):
+                    if v in self.S_set:
+                        continue
+                    
+                    # Coût si on supprime f
+                    if self.F0[v] == f:
+                        # v serait servi par sa deuxième facility ou par i
+                        cost_without_f = min(self.distances[i, v], self.D1[v])
+                    else:
+                        # v garde sa facility actuelle
+                        cost_without_f = min(self.distances[i, v], self.D0[v])
+                    
+                    M[f] = max(M[f], cost_without_f)
+            
+            # Trouver le meilleur swap
+            for f in M:
+                Mf = M[f]
+                if self.verbose and len(candidates) <= 5:  # Verbose seulement si peu de candidats
+                    print(f"    swap: sortir {f}, entrer {i}, coût={Mf:.2f}")
+                
                 if Mf < C:
-                    L = [(f,i)]; C = Mf
-                elif Mf == C:
-                    L.append((f,i))
-            # restauration
-            np.copyto(self.F0,self._saved_F0)
-            np.copyto(self.D0,self._saved_D0)
-            np.copyto(self.F1,self._saved_F1)
-            np.copyto(self.D1,self._saved_D1)
+                    L = [(f, i)]
+                    C = Mf
+                elif abs(Mf - C) < 1e-12:
+                    L.append((f, i))
+            
+            # Restaurer l'état
+            np.copyto(self.F0, self._saved_F0)
+            np.copyto(self.D0, self._saved_D0)
+            np.copyto(self.F1, self._saved_F1)
+            np.copyto(self.D1, self._saved_D1)
             self.Sc = saved_Sc
             self.S = saved_S.copy()
             self.S_set = saved_S_set.copy()
+
         if L and self.verbose:
             choice = random.choice(L)
             print(f"[FIND_PAIR] Choix: sortir {choice[0]}, entrer {choice[1]} (C={C:.2f})\n")
-        return random.choice(L) if L else (None,None)
+        
+        return random.choice(L) if L else (None, None)
 
     def search(self,
                initial_solution: Optional[List[int]] = None,
-               generation: int = 0) -> Tuple[List[int],float]:
+               generation: int = 0) -> Tuple[List[int], float]:
         if self.verbose:
-            print("=== RECHERCHE LOCALE OPTIMISÉE VERBOSE ===")
+            print("=== RECHERCHE LOCALE ===")
+        
         if initial_solution is None:
-            S0 = [random.randint(0,self.n-1)]
+            S0 = [random.randint(0, self.n-1)]
         else:
             S0 = initial_solution.copy()
+        
         if self.verbose:
             print(f"n={self.n}, p={self.p}, init={S0}, gen={generation}\n")
-        self.S=[]; self.S_set.clear()
-        self.F0.fill(-1); self.D0.fill(np.inf)
-        self.F1.fill(-1); self.D1.fill(np.inf)
-        self.Sc=0.0; self.forbidden_swaps.clear()
+        
+        # Réinitialiser l'état
+        self.S = []
+        self.S_set.clear()
+        self.F0.fill(-1)
+        self.D0.fill(np.inf)
+        self.F1.fill(-1)
+        self.D1.fill(np.inf)
+        self.Sc = 0.0
+        self.forbidden_swaps.clear()
+        
+        # Ajouter les facilities initiales
         for f in S0:
             self.add_facility(f)
+        
         if self.verbose:
             print("=== PHASE 1: CONSTRUCTION ===")
-        while len(self.S)<self.p:
-            critical = np.where(np.abs(self.D0 - self.Sc)<1e-9)[0]
-            nonf = [v for v in range(self.n) if v not in self.S_set]
-            w = random.choice(critical) if len(critical)>0 else max(nonf, key=lambda v: self.D0[v])
+        
+        
+        while len(self.S) < self.p:
+            # Trouver le vertex le plus critique (distance max)
+            critical_vertices = np.where(np.abs(self.D0 - self.Sc) < 1e-9)[0]
+            non_facilities = [v for v in range(self.n) if v not in self.S_set]
+            
+            if len(critical_vertices) > 0:
+                w = random.choice(critical_vertices)
+            else:
+                w = max(non_facilities, key=lambda v: self.D0[v]) if non_facilities else 0
+            
             if self.verbose:
                 print(f"[Construction] w={w}, Sc={self.Sc:.2f}")
-            current = self.F0[w]
-            if current>=0:
-                k_idx = np.where(self.neighbors[w]==current)[0]
-                k = k_idx[0] if len(k_idx)>0 else 1
-            else:
-                k=1
-            # plus de plafonnement ici
             
-            MIN_K = 50
-            k_eff = max(k, MIN_K)
-            Nwk = self.neighbors[w][:k_eff]
-
+            # Selon Pullan : sélectionner uniformément dans Nwk
+            current = self.F0[w]
+            if current >= 0:
+                k_idx = np.where(self.neighbors[w] == current)[0]
+                k = k_idx[0] if len(k_idx) > 0 else 1
+            else:
+                k = 1
+            
+            Nwk = self.neighbors[w][:k+1]  # Include k+1 selon l'article
             candidates = [v for v in Nwk if v not in self.S_set]
+            
             if not candidates:
-                candidates = nonf
-            newf = random.choice(candidates)
+                candidates = non_facilities
+            
+            newf = random.choice(candidates) if candidates else random.choice(non_facilities)
+            
             if self.verbose:
                 print(f"[Construction] Ajout centre {newf}\n")
             self.add_facility(newf)
+        
         if self.verbose:
             print("=== PHASE 2: AMÉLIORATION ===")
-        max_iter = 2*self.n
-        max_no = int(0.1*(generation+1)*self.n)
-        it,no=0,0
-        best_cost=self.Sc; best_sol=self.S.copy()
-        while it<max_iter and no<max_no:
-            crit = np.where(np.abs(self.D0-self.Sc)<1e-9)[0]
-            if len(crit)==0: break
-            w = random.choice(crit)
+        
+        # Phase d'amélioration - CRITÈRES AJUSTÉS
+        max_iter = 3 * self.n  # Augmenté de 2*n à 3*n
+        max_no_improve = max(int(0.2 * (generation + 1) * self.n), self.n)  # Plus flexible
+        
+        iteration = 0
+        no_improve = 0
+        best_cost = self.Sc
+        best_sol = self.S.copy()
+        
+        while iteration < max_iter and no_improve < max_no_improve:
+            # Trouver les vertices critiques
+            critical = np.where(np.abs(self.D0 - self.Sc) < 1e-9)[0]
+            if len(critical) == 0:
+                break
+            
+            w = random.choice(critical)
+            
             if self.verbose:
-                print(f"[Amélioration] iteration {it}, w={w}, Sc={self.Sc:.2f}")
+                print(f"[Amélioration] iter {iteration}, w={w}, Sc={self.Sc:.2f}")
+            
             f_out, v_in = self.find_pair(w)
-            if f_out is None or (f_out,v_in) in self.forbidden_swaps:
-                no+=1; it+=1; continue
+            
+            if f_out is None or (f_out, v_in) in self.forbidden_swaps:
+                no_improve += 1
+                iteration += 1
+                continue
+            
             if self.verbose:
                 print(f"[Amélioration] Swap: sortir {f_out}, entrer {v_in}\n")
+            
+            # Effectuer le swap
             self.remove_facility(f_out)
             self.add_facility(v_in)
-            self.forbidden_swaps.add((f_out,v_in))
-            if self.Sc<best_cost:
+            self.forbidden_swaps.add((f_out, v_in))
+            
+            # Nettoyer les swaps interdits si trop nombreux
+            if len(self.forbidden_swaps) > self.p * self.n:
+                self.forbidden_swaps.clear()
+            
+            if self.Sc < best_cost - 1e-12:  # Amélioration significative
                 if self.verbose:
                     print(f"[Amélioration] Amélioration: {best_cost:.2f} -> {self.Sc:.2f}\n")
-                best_cost, best_sol, no = self.Sc, self.S.copy(), 0
+                best_cost = self.Sc
+                best_sol = self.S.copy()
+                no_improve = 0
             else:
                 if self.verbose:
                     print(f"[Amélioration] Pas d'amélioration ({self.Sc:.2f})\n")
-                no+=1
-            it+=1
+                no_improve += 1
+            
+            iteration += 1
+        
         if self.verbose:
-            print(f"=== FIN Recherche: meilleur coût = {best_cost:.2f}, solution = {best_sol} ===")
+            print(f"=== FIN Recherche: iter={iteration}, meilleur coût = {best_cost:.2f}, solution = {best_sol} ===")
+        
         return best_sol, best_cost

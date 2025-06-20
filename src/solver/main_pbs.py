@@ -34,7 +34,7 @@ def main():
 
     # Lancement de PBS
     pbs = OptimizedPBSAlgorithm(n, p, distances, neighbors)
-    sol, cost = pbs.run(target_cost=None, max_generations=50, parallel=True)
+    sol, cost = pbs.run(target_cost=None, max_generations=20, parallel=True)
 
     # Affichage du résultat
     print("Solution:", sol)
