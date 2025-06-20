@@ -270,7 +270,7 @@ class VerboseOptimizedLocalSearchPCenter:
             print("=== PHASE 2: AMÉLIORATION ===")
         
         # Phase d'amélioration - CRITÈRES AJUSTÉS
-        max_iter = 3 * self.n  # Augmenté de 2*n à 3*n
+        max_iter = 2 * self.n  # Augmenté de 2*n à 3*n
         max_no_improve = max(int(0.2 * (generation + 1) * self.n), self.n)  # Plus flexible
         
         iteration = 0
