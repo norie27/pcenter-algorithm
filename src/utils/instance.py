@@ -1,6 +1,4 @@
 import numpy as np
-
-import numpy as np
 from typing import List
 
 class Instance:
@@ -16,3 +14,4 @@ class Instance:
             neighbors[i] = np.argsort(self.dist[i])
         
         return neighbors
+

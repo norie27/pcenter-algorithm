@@ -3,155 +3,11 @@ import random
 import time
 from typing import List, Tuple, Optional
 from multiprocessing import Pool, cpu_count
-import math
 import os
-
-# src/algorithms/pbs.py
-from src.algorithms.localsearch import VerboseOptimizedLocalSearchPCenter as OptimizedLocalSearchPCenter
-# Variables globales pour la mémoire partagée (initialisées dans run_pbs)
-_global_distances = None
-_global_neighbors = None
-
-def init_worker(distances, neighbors, seed):
-    """Initialise les variables globales dans chaque processus worker"""
-    global _global_distances, _global_neighbors
-    _global_distances = distances
-    _global_neighbors = neighbors
-    # Initialiser le générateur aléatoire avec un seed unique pour chaque processus
-    random.seed(seed)
-
-def M1_global(Pj, n, p):
-    """Version globale de M1 pour la parallélisation"""
-    q = random.randint(p // 2, p)
-    selected = random.sample(Pj, min(q, len(Pj)))
-    available = [v for v in range(n) if v not in selected]
-    if len(selected) < p and available:
-        needed = p - len(selected)
-        selected.extend(random.sample(available, min(needed, len(available))))
-    return selected
-
-def M2_global(Pi, distances):
-    """Version globale de M2 pour la parallélisation"""
-    if len(Pi) < 2:
-        return Pi.copy()
-    
-    min_dist = float('inf')
-    ri, rj = 0, 1
-    
-    for i in range(len(Pi)):
-        for j in range(i + 1, len(Pi)):
-            d = distances[Pi[i], Pi[j]]
-            if d < min_dist:
-                min_dist = d
-                ri, rj = i, j
-    
-    return [c for k, c in enumerate(Pi) if k not in (ri, rj)]
-
-def X1_global(Pi, Pj, n, p):
-    """Version globale de X1 pour la parallélisation"""
-    combined = list(set(Pi) | set(Pj))
-    
-    if len(combined) >= p:
-        return random.sample(combined, p)
-    else:
-        available = [v for v in range(n) if v not in combined]
-        needed = p - len(combined)
-        if needed > 0 and available:
-            additional = random.sample(available, min(needed, len(available)))
-            combined.extend(additional)
-        return combined
-
-def X2_global(Pi, Pj, n, p, distances):
-    """Version globale de X2 pour la parallélisation - VERSION CORRIGÉE"""
-    u1, u2 = random.sample(range(n), 2)
-    q = random.uniform(0.1, 0.9)
-    
-    S1, S2 = [], []
-    
-    # Traiter Pi séparément
-    for f in Pi:
-        d1 = distances[f, u1]
-        d2 = distances[f, u2]
-        
-        if d2 <= 1e-12:
-            S1.append(f)
-            continue
-            
-        ratio = d1 / d2
-        if ratio <= q:
-            S1.append(f)
-        else:
-            S2.append(f)
-    
-    # Traiter Pj séparément
-    for f in Pj:
-        d1 = distances[f, u1]
-        d2 = distances[f, u2]
-        
-        if d2 <= 1e-12:
-            S2.append(f)
-            continue
-            
-        ratio = d1 / d2
-        if ratio > q:
-            S1.append(f)
-        else:
-            S2.append(f)
-    
-    # Enlever les doublons potentiels
-    S1 = list(set(S1))
-    S2 = list(set(S2))
-    
-    if len(S1) > p:
-        S1 = random.sample(S1, p)
-    if len(S2) > p:
-        S2 = random.sample(S2, p)
-        
-    return S1, S2
-
-def process_pair_global(args):
-    """Fonction globale pour traitement parallèle"""
-    i, j, Pi, Pj, generation, n, p, ls_verbose = args
-    
-    # Import local dans la fonction pour éviter les problèmes de sérialisation
- 
-    # Utiliser les variables globales pour distances et neighbors
-    global _global_distances, _global_neighbors
-    distances = _global_distances
-    neighbors = _global_neighbors
-    
-    results = []
-    
-    try:
-        # L(M1(Pj))
-        S = M1_global(Pj, n, p)
-        ls = OptimizedLocalSearchPCenter(n, p, distances, neighbors, verbose=ls_verbose)
-        sol, cost = ls.search(S, generation)
-        results.append((sol, cost))
-        
-        # L(M2(X1(Pi,Pj)))
-        S = X1_global(Pi, Pj, n, p)
-        S = M2_global(S, distances)
-        ls = OptimizedLocalSearchPCenter(n, p, distances, neighbors, verbose=ls_verbose)
-        sol, cost = ls.search(S, generation)
-        results.append((sol, cost))
-        
-        # X2 → M2 pour chaque enfant
-        S1, S2 = X2_global(Pi, Pj, n, p, distances)
-        for seed in (S1, S2):
-            Snew = M2_global(seed, distances)
-            ls = OptimizedLocalSearchPCenter(n, p, distances, neighbors, verbose=ls_verbose)
-            sol, cost = ls.search(Snew, generation)
-            results.append((sol, cost))
-    
-    except Exception as e:
-        print(f"[PBS] Erreur dans process_pair_global: {type(e).__name__}: {e}")
-        # Retourner des résultats vides en cas d'erreur
-        return []
-    
-    return results
-
-# Classe PBS
+from .genetic_operators import M1_global, M2_global, X1_global, X2_global
+from .parallel_worker import init_worker, process_pair_global
+from .localsearch import VerboseOptimizedLocalSearchPCenter as OptimizedLocalSearchPCenter
+from src.utils.read_instance import create_instance
 
 class OptimizedPBSAlgorithm:
     """PBS EXACT selon Pullan avec optimisations numpy et parallélisation"""
@@ -304,10 +160,6 @@ class OptimizedPBSAlgorithm:
         max_generations: int = 30,
         parallel: bool = True
     ) -> Tuple[List[int], float]:
-        """Exécute l'algorithme PBS principal"""
-        
-        # Import local pour éviter les problèmes circulaires
-         
         
         # Initialisation de la population P
         print("[PBS] Initialisation de la population...")
@@ -351,53 +203,6 @@ class OptimizedPBSAlgorithm:
         print(f"[PBS] =====================\n")
         
         return best_sol, best_cost
-
-
-# Fonctions utilitaires
-
-def create_instance(n: int, p: int, distances: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-    """Crée une instance avec matrice de distances et voisins triés"""
-    distances = np.array(distances, dtype=np.float64)
-    neighbors = np.zeros((n, n), dtype=np.int32)
-    for i in range(n):
-        neighbors[i] = np.argsort(distances[i])
-    return distances, neighbors
-
-
-def read_graph_instance(path: str) -> Tuple[int, int, List[List[float]]]:
-    """Lit une instance de graphe depuis un fichier"""
-    with open(path, 'r') as f:
-        line = f.readline()
-        n, _, p = map(int, line.strip().split())
-        
-        # Initialiser la matrice de distances
-        dist = [[float('inf')] * n for _ in range(n)]
-        for i in range(n):
-            dist[i][i] = 0
-        
-        # Lire les arêtes
-        for line in f:
-            parts = line.strip().split()
-            if len(parts) != 3:
-                continue
-            i, j, d = map(int, parts)
-            dist[i-1][j-1] = d
-            dist[j-1][i-1] = d
-        
-        # Floyd-Warshall pour les plus courts chemins
-        for k in range(n):
-            for i in range(n):
-                for j in range(n):
-                    if dist[i][j] > dist[i][k] + dist[k][j]:
-                        dist[i][j] = dist[i][k] + dist[k][j]
-    
-    return n, p, dist
-
-
-def read_instance(filepath: str) -> Tuple[int, int, np.ndarray]:
-    """Lit une instance et retourne n, p, distances"""
-    n, p, dist = read_graph_instance(filepath)
-    return n, p, np.array(dist, dtype=np.float64)
 
 
 def run_pbs(

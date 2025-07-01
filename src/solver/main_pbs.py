@@ -3,10 +3,11 @@
 import argparse
 import time
 import numpy as np
-from src.algorithms.pbs import (
-    OptimizedPBSAlgorithm,
+from src.algorithms.pbs import OptimizedPBSAlgorithm
+from src.utils.read_instance import (
     create_instance,
-    read_graph_instance
+    read_graph_instance,
+    read_instance,
 )
 
 def main():

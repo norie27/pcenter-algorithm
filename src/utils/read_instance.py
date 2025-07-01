@@ -1,11 +1,6 @@
 import math
 from typing import List, Tuple
-
-def read_matrix_instance(path: str) -> Tuple[int, int, List[List[float]]]:
-    with open(path, 'r') as f:
-        n, p = map(int, f.readline().strip().split())
-        dist = [list(map(float, f.readline().strip().split())) for _ in range(n)]
-    return n, p, dist
+import numpy as np
 
 def read_graph_instance(path: str) -> Tuple[int, int, List[List[float]]]:
     with open(path, 'r') as f:
@@ -28,6 +23,21 @@ def read_graph_instance(path: str) -> Tuple[int, int, List[List[float]]]:
                         dist[i][j] = dist[i][k] + dist[k][j]
     return n, p, dist
 
+def create_instance(n: int, p: int, distances: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    """Crée une instance avec matrice de distances et voisins triés"""
+    distances = np.array(distances, dtype=np.float64)
+    neighbors = np.zeros((n, n), dtype=np.int32)
+    for i in range(n):
+        neighbors[i] = np.argsort(distances[i])
+    return distances, neighbors
+
+
+def read_instance(filepath: str) -> Tuple[int, int, np.ndarray]:
+    """Lit une instance et retourne n, p, distances"""
+    n, p, dist = read_graph_instance(filepath)
+    return n, p, np.array(dist, dtype=np.float64)
+
+
 def read_instance_auto(path: str) -> Tuple[int, int, List[List[float]]]:
     """
     Détecte automatiquement le format de l'instance : matrice ou graphe.
@@ -45,3 +55,9 @@ def read_instance_auto(path: str) -> Tuple[int, int, List[List[float]]]:
             return read_graph_instance(path)
         else:
             raise ValueError("Format de fichier inconnu.")
+
+def read_matrix_instance(path: str) -> Tuple[int, int, List[List[float]]]:
+    with open(path, 'r') as f:
+        n, p = map(int, f.readline().strip().split())
+        dist = [list(map(float, f.readline().strip().split())) for _ in range(n)]
+    return n, p, dist
