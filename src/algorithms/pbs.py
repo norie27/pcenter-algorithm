@@ -196,7 +196,7 @@ class OptimizedPBSAlgorithm:
             if abs(cost - Pi_cost) < 1e-12:
                 return True
             # Seuil de similarité ajusté à 70% (moins strict que 90%)
-            if len(set(S) & set(Pi)) > 0.9 * self.p:
+            if len(set(S) & set(Pi)) > 0.7 * self.p:
                 return True
         return False
 
