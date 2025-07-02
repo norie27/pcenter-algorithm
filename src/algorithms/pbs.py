@@ -152,6 +152,17 @@ def process_pair_global(args):
     return results
 
 # Classe PBS
+def pbs_init_worker(args):
+    n, p, distances, neighbors, verbose, worker_id = args
+    import random, time, os
+    seed = int(time.time() * 1e6) + os.getpid() + worker_id
+    seed = seed % (2**32 - 1)  # <--- On force la seed à la bonne plage
+    random.seed(seed)
+    np.random.seed(seed)
+
+    S0 = [random.randint(0, n-1)]
+    ls = OptimizedLocalSearchPCenter(n, p, distances, neighbors, verbose=verbose)
+    return ls.search(S0, 0)
 
 class OptimizedPBSAlgorithm:
     """PBS EXACT selon Pullan avec optimisations numpy et parallélisation"""
@@ -185,7 +196,7 @@ class OptimizedPBSAlgorithm:
             if abs(cost - Pi_cost) < 1e-12:
                 return True
             # Seuil de similarité ajusté à 70% (moins strict que 90%)
-            if len(set(S) & set(Pi)) > 0.7 * self.p:
+            if len(set(S) & set(Pi)) > 0.9 * self.p:
                 return True
         return False
 
@@ -234,7 +245,8 @@ class OptimizedPBSAlgorithm:
             try:
                 parallel_start = time.time()
                 # Utiliser le nombre optimal de processus
-                n_processes = min(8, cpu_count(), len(tasks))
+                n_processes = min(cpu_count(), len(tasks))
+
                 
                 # Créer le pool avec initialisation des workers
                 with Pool(
@@ -297,6 +309,17 @@ class OptimizedPBSAlgorithm:
         self.generation += 1
         gen_total_time = time.time() - gen_start_time
         print(f"[PBS] Fin gen {self.generation}, meilleur Sc = {self.P[0][1]:.4f}, {improvements} améliorations (temps total: {gen_total_time:.2f}s)\n")
+    
+    
+    def parallel_init_population(self):
+        args_list = [
+        (self.n, self.p, self.distances, self.neighbors, self.ls_verbose, i)
+        for i in range(self.population_size)
+        ]
+        with Pool(self.population_size) as pool:
+             results = pool.map(pbs_init_worker, args_list)
+        for sol, cost in results:
+            self.P.append((sol, cost))
 
     def run(
         self,
@@ -313,12 +336,8 @@ class OptimizedPBSAlgorithm:
         print("[PBS] Initialisation de la population...")
         init_start_time = time.time()
         
-        for _ in range(self.population_size):
-            S0 = self.create_initial_solution()
-            ls = OptimizedLocalSearchPCenter(self.n, self.p, self.distances, self.neighbors, verbose=self.ls_verbose)
-            sol, cost = ls.search(S0, 0)
-            self.P.append((sol, cost))
-        
+        self.parallel_init_population()
+
         # Trier la population par coût
         self.P.sort(key=lambda x: x[1])
         init_time = time.time() - init_start_time
@@ -354,24 +373,23 @@ class OptimizedPBSAlgorithm:
 
 
 # Fonctions utilitaires
-
 def create_instance(n: int, p: int, distances: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
     """Crée une instance avec matrice de distances et voisins triés"""
-    distances = np.array(distances, dtype=np.float64)
+    distances = np.array(distances, dtype=np.int32)  # int32 au lieu de float64
     neighbors = np.zeros((n, n), dtype=np.int32)
     for i in range(n):
         neighbors[i] = np.argsort(distances[i])
     return distances, neighbors
 
 
-def read_graph_instance(path: str) -> Tuple[int, int, List[List[float]]]:
+def read_graph_instance(path: str) -> Tuple[int, int, List[List[int]]]:  # Changé float → int
     """Lit une instance de graphe depuis un fichier"""
     with open(path, 'r') as f:
         line = f.readline()
         n, _, p = map(int, line.strip().split())
         
-        # Initialiser la matrice de distances
-        dist = [[float('inf')] * n for _ in range(n)]
+        # Initialiser la matrice de distances EN ENTIERS
+        dist = [[999999] * n for _ in range(n)]  # Au lieu de float('inf')
         for i in range(n):
             dist[i][i] = 0
         
@@ -380,11 +398,11 @@ def read_graph_instance(path: str) -> Tuple[int, int, List[List[float]]]:
             parts = line.strip().split()
             if len(parts) != 3:
                 continue
-            i, j, d = map(int, parts)
+            i, j, d = map(int, parts)  # d reste en int
             dist[i-1][j-1] = d
             dist[j-1][i-1] = d
         
-        # Floyd-Warshall pour les plus courts chemins
+        # Floyd-Warshall - tout reste en entiers
         for k in range(n):
             for i in range(n):
                 for j in range(n):
@@ -392,7 +410,6 @@ def read_graph_instance(path: str) -> Tuple[int, int, List[List[float]]]:
                         dist[i][j] = dist[i][k] + dist[k][j]
     
     return n, p, dist
-
 
 def read_instance(filepath: str) -> Tuple[int, int, np.ndarray]:
     """Lit une instance et retourne n, p, distances"""

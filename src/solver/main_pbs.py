@@ -1,5 +1,6 @@
 # src/solver/main_pbs.py
-
+import os
+import random
 import argparse
 import time
 import numpy as np
@@ -8,6 +9,22 @@ from src.algorithms.pbs import (
     create_instance,
     read_graph_instance
 )
+
+
+
+
+def main():
+    # --------- SEED RANDOM ICI -----------
+    seed = int(time.time() * 1e6) + os.getpid()
+    random.seed(seed)
+    np.random.seed(seed)
+    print(f"[PBS] Seed utilisé pour ce run : {seed}\n")
+    # --------------------------------------
+    
+    # (le reste du code...)
+
+
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -99,19 +116,7 @@ def main():
     print(f"- TOTAL: {read_time + prep_time + algo_time:.2f}s")
     print(f"{'='*60}\n")
 
-    # Vérification optionnelle de la solution
-    if args.verbose:
-        print("Vérification de la solution...")
-        max_dist = 0
-        for i in range(n):
-            min_dist_to_center = min(distances[i, c] for c in sol)
-            max_dist = max(max_dist, min_dist_to_center)
-        
-        print(f"Coût vérifié: {max_dist:.6f}")
-        if abs(max_dist - cost) > 1e-6:
-            print("⚠️  ATTENTION: Divergence entre le coût rapporté et vérifié!")
-        else:
-            print("✓ Coût vérifié correctement")
+    
 
 if __name__ == "__main__":
     main()

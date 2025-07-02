@@ -182,7 +182,7 @@ class VerboseOptimizedLocalSearchPCenter:
             k = self.n  # Si pas de facility assignée, considérer tous
         
         # Prendre les k premiers voisins selon Pullan
-        Nwk = self.neighbors[w][:k]
+        Nwk = self.neighbors[w][:k+1]
         if self.verbose:
             print(f"  k={k}, Nwk={Nwk[:10].tolist()}..." if k > 10 else f"  k={k}, Nwk={Nwk.tolist()}")
         
@@ -326,7 +326,7 @@ class VerboseOptimizedLocalSearchPCenter:
         
         # Phase d'amélioration - CRITÈRES AJUSTÉS
         max_iter = 2 * self.n  
-        max_no_improve = max(int(0.2 * (generation + 1) * self.n), self.n)  # Plus flexible
+        max_no_improve = max(int(0.2* (generation + 1) * self.n), self.n)  # Plus flexible
         
         iteration = 0
         no_improve = 0
