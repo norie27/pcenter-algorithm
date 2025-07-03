@@ -179,7 +179,7 @@ class VerboseOptimizedLocalSearchPCenter:
             k = self.n  # Si pas de facility assignée, considérer tous
         
         # Prendre les k premiers voisins selon Pullan
-        Nwk = self.neighbors[w][:k]
+        Nwk = self.neighbors[w][:k+1]
         if self.verbose:
             print(f"  k={k}, Nwk={Nwk[:10].tolist()}..." if k > 10 else f"  k={k}, Nwk={Nwk.tolist()}")
         

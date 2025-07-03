@@ -96,7 +96,7 @@ def main():
     print(f"\nTemps d'exécution:")
     print(f"- Lecture instance: {read_time:.2f}s")
     print(f"- Préparation: {prep_time:.2f}s")
-    print(f"- Algorithme PBS: {algo_time:.2f}s")
+    print(f"- Algorithme Genetique: {algo_time:.2f}s")
     print(f"- TOTAL: {read_time + prep_time + algo_time:.2f}s")
     print(f"{'='*60}\n")
 

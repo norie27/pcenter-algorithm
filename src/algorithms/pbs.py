@@ -5,7 +5,7 @@ from typing import List, Tuple, Optional
 from multiprocessing import Pool, cpu_count
 import os
 from .genetic_operators import M1_global, M2_global, X1_global, X2_global
-from .parallel_worker import init_worker, process_pair_global
+from .parallel_worker import init_worker, process_pair_global,pbs_init_worker
 from .localsearch import VerboseOptimizedLocalSearchPCenter as OptimizedLocalSearchPCenter
 from src.utils.read_instance import create_instance
 
@@ -154,6 +154,18 @@ class OptimizedPBSAlgorithm:
         gen_total_time = time.time() - gen_start_time
         print(f"[PBS] Fin gen {self.generation}, meilleur Sc = {self.P[0][1]:.4f}, {improvements} améliorations (temps total: {gen_total_time:.2f}s)\n")
 
+
+    def parallel_init_population(self):
+        args_list = [
+        (self.n, self.p, self.distances, self.neighbors, self.ls_verbose, i)
+        for i in range(self.population_size)
+        ]
+        with Pool(self.population_size) as pool:
+             results = pool.map(pbs_init_worker, args_list)
+        for sol, cost in results:
+            self.P.append((sol, cost))
+
+
     def run(
         self,
         target_cost: Optional[float] = None,
@@ -165,11 +177,7 @@ class OptimizedPBSAlgorithm:
         print("[PBS] Initialisation de la population...")
         init_start_time = time.time()
         
-        for _ in range(self.population_size):
-            S0 = self.create_initial_solution()
-            ls = OptimizedLocalSearchPCenter(self.n, self.p, self.distances, self.neighbors, verbose=self.ls_verbose)
-            sol, cost = ls.search(S0, 0)
-            self.P.append((sol, cost))
+        self.parallel_init_population()
         
         # Trier la population par coût
         self.P.sort(key=lambda x: x[1])

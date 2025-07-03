@@ -57,3 +57,15 @@ def process_pair_global(args):
         return []
     
     return results
+
+def pbs_init_worker(args):
+    n, p, distances, neighbors, verbose, worker_id = args
+    import random, time, os
+    seed = int(time.time() * 1e6) + os.getpid() + worker_id
+    seed = seed % (2**32 - 1)  # <--- On force la seed à la bonne plage
+    random.seed(seed)
+    np.random.seed(seed)
+
+    S0 = [random.randint(0, n-1)]
+    ls = OptimizedLocalSearchPCenter(n, p, distances, neighbors, verbose=verbose)
+    return ls.search(S0, 0)
